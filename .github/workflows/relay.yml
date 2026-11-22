@@ -1,0 +1,31 @@
+name: Relay verification
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: rustup target add wasm32-unknown-unknown
+      - run: cargo test --locked
+      - run: cargo install --locked worker-build --version 0.8.7
+      - name: Exercise an isolated local Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf 'ORCH_KEY=%s\nWORK_KEY=%s\nLEASE_SECONDS=1\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" > .dev.vars
+          npx --yes wrangler@4.166.0 dev --local --port 8787 > "$RUNNER_TEMP/crab-local.log" 2>&1 &
+          relay_pid=$!
+          trap 'kill "$relay_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 180); do
+            curl -fsS http://127.0.0.1:8787/health > /dev/null 2>&1 && break
+            kill -0 "$relay_pid"
+            sleep 1
+          done
+          TEST_LEASE=1 node --env-file=.dev.vars scripts/smoke.mjs

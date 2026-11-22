@@ -1,0 +1,3 @@
+ORCH_KEY=replace-with-a-long-random-string-for-the-orchestrator
+WORK_KEY=replace-with-a-different-long-random-string-for-workers
+LEASE_SECONDS=1
